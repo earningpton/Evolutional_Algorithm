@@ -1,1 +1,0 @@
-# Evolutional_Algorithm
