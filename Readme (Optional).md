@@ -1,0 +1,119 @@
+
+## Differential Evolution
+
+### Key Concept
+Differential Evolution or DE is a simple stochastic and population based minimizer. Because it is a metaheuristic method, there are several expectations to make known first
+
+1. It does not guarantee an optimal solution, unless the termination constraint includes max number of iterations performed
+2. It is only as good as the given search area allows
+3. The problem does not need to be differentiable or continuous, a massive advantage in the constraints-search type problem
+
+<img src="http://becomingminimalist.com/wp-content/uploads/2008/07/post-it-note.jpg" width="30" height="30" align = "left"> May take very long run time due to how our problem is set up.
+
+### QoE Constraints-search Problem
+This problem is proposed to Spirent as an open-ended adjustment question on the distribution of Quality of Experience or QoE scores. For now, however, we will focus on Voice KQI, a sub secton that contributes to QoE. The KQI score ranges from 1 to 5 for each customer and depends on #failures and #successes in various provided services. Because each service is different, its acceptable rate of failure and its importance weight differs.
+
+To this end, each service has six adjustable parameters that affects its own SKQI = $S*W$ which combines to the Voice KQI, two of which parameters are normally fixed. 
+
+The ones used for Voice KQI adjustment are:
+- High failure Threshold (HT)
+- Low failure Threshold (LT)
+- Highest Weight (HW)
+- Lowest weight (LW)
+
+The fixed ones for this problem are:
+- Volume Threshold for Weight Adjustment (VTW)
+- Failure Threshold for Weight Adjustment (FTW)
+
+The client wants a certain distribution shape of customers' Voice KQI, Spirent's job is to adjust HT,LT,HW,LW such that the KQI distribution fits the shape as much as possible. Previously, the algorithm used is educated guess along with professional hand adjustments. This workbook aims to propose a more algorithmic approach to the solution-finding method, anmely Differential Evolution.
+
+### Differential Evolution Algoritm
+Below is a flow chart of how Differential Evolution works.
+
+![Alt Text](http://www1.icsi.berkeley.edu/~storn/de2.jpg)
+
+Of course, we will list out a detailed explanation of the algorithm step by step. At the same time, it is noteworthy that there are multiple large areas of optimal solutions rather than a single point. And, it is highly possible that DE algorithm will stumble upon one point in such area during the search, giving us an optimal solution for the client.
+
+There are two steps required to utlize DE Algorithm, namely initialize and loop
+
+#### Initialize DE
+First, we have to define the search area as well as three other knobs. This is the most important part as this action will decide whether DE works or not, and at what speed and accuracy by itself. Assume we have $j$ number of service provided.  
+
+<img src="http://images.clipartpanda.com/key-clipart-9c4eLkyyi.svg" width="30" height="30" align = "left">**Makes sure that the search area contains an optimal solution**
+
+| Overarching Type | Initialized Terms        | Value Type                | Affect     |Note  |
+| -------------: |------------- |:-------------:| -----:|-----:|
+| Search Parameters for each service | High failure Threshold ($HT$)      | Interval | Score $\to$ KQI | $HT > LT$ and $HT \in (0,1]$ |
+|  | Low failure Threshold ($LT$)     | Interval      |   Score $\to$ KQI |$HT > LT$ and $LT \in (0,1]$ |
+| | Highest Weight ($HW$) | Interval     |    Weight $\to$ KQI |$HW > LW$ |
+| | Lowest Weight ($HW$) | Interval     |    Weight $\to$ KQI |$HW > LW$ |
+|   |  | |  | |
+| Searching Knobs | Search Population Number($NP$) |Constant     |    Searching Speed |A rule of thumb is $10*$#parameters  |
+|  | Crossover Ratio ($CR$) |Constant     |    Searching Speed |A rule of thumb is $CR = 0.9$   |
+|  | weighting factor ($F$) |Constant     |    Searching Speed |$F \in [0.5,1.0]$ helps against noisy data   |
+|   |  | |  | |
+| Termination Constraints | Objective Function $f$ & constant $c$ |$f:\mathbb{R}^{4j} \to \mathbb{R}$ | Optimal Value Area| Terminate when $\exists x, f(x) <= c$  |
+| | Maximum loop iteration ($MLI$) | integer constant| Guarantee Solution| Terminate when #loops iterated $< MLI$  |
+
+Now that we have set 
+1. Search Area $\in \mathbb{R}^{4j}$
+2. Search Knobs $NP, CR, F$
+3. Search Termination Condition $c$ & $MLI$
+
+We then randomize $NP = 40j$ numbers of vector $x \in \mathbb{R}^{4j}$ where $x$ follows $HT,LT,HW,LW$ constraints. In other words, we now have 40j vectors in the intended search area, call this ${x_1,...,x_{40j}}$.
+
+For each vector, we find the objective value $f(x_1),...f(x_{40j})$ by running customers' data through $x_i$'s $HT,LT,HW,LW$ to get customers' KQI distribution. $f(x_i)$ then reflects how close the set of parameters $x_i$ is to fulfilling client's desired distribution.
+
+With all the data preparation done, we are now ready to loop
+
+#### DE Loop Algorithm
+At the start of each loop, we have ${x_1,...,x_{40j}}$ and $f(x_1),...f(x_{40j})$. We then generate a set of blank $\mathbb{R}^{4j}$ vector ${y_1,...,y_{40j}}$ and a set of blank values $f(y_1),...f(y_{40j})$.
+
+<img src="http://images.clipartpanda.com/key-clipart-9c4eLkyyi.svg" width="30" height="30" align = "left">If $\min(f(x_i)) < c$ or #loops iterated $= MLI$, then we terminates the looping sequence and our **solution is $argmin(f(x_i))$**
+
+Else, #loops iterated $+= 1$
+
+For each $x_i$, randomly pick 3 **unique** vectors $a,b,c$ from ${x_1,..., x_{i-1} ,x_{i+1} ,...,x_{40j}}$. We create mutant vector $temp = a + F*(b-c)$ where $F$ is a weighting factor. 
+
+<img src="http://becomingminimalist.com/wp-content/uploads/2008/07/post-it-note.jpg" width="30" height="30" align = "left">The difference weighted by $F$ is added to a base mutation vector. This way, no separate probability distribution has to be used which makes the scheme completely self-organizing.
+
+Randomly chosen one number from $1$ to $4j$, this will be a forced evolution number. Assume we pick $2$, for each of $1$,$3$,..., $4j$, we pick or put down with probability $CR$ or Cross Over Ratio. For every number pick, we replace its position in $x_i$ vector with the same position in $temp$ mutant vector and called this mutated vector $y_i$. 
+
+<img src="http://becomingminimalist.com/wp-content/uploads/2008/07/post-it-note.jpg" width="30" height="30" align = "left">For instance let j = 1 for simplicity. If $x_i = [0.1,0.2,0.3,0.4]$ and $temp = [0.6,0.7,0.8,0.9]$, we pick spot $2$ by initial integer randomization. Then we flip $90%$ head coin and get head on $3,4$. Then our final product $y_i = [0.1,0.7,0.8,0.9]$
+
+We then test a mutated $y_i$ by running customers' data through $y_i$'s $HT,LT,HW,LW$ to get customers' KQI distribution. $f(y_i)$ then reflects how close the set of parameters $y_i$ is to fulfilling client's desired distribution.
+
+If $f(y_i) < f(x_i)$ then we know that y_i is a **good** evolution. We then keep the value of $y_i$. Otherwise $y_i$ is a **bad** mutation so we set $y_i = x_i$.
+
+After we finish looping through all 40j $x_i$s, we replace all $x_1,...,x_{40j}$ with $y_1,...,y_{40j}$ which represents a new population.
+
+The loop then begins anew until terminated by reaching an optimal solution or maximum iteration
+
+<img src="http://becomingminimalist.com/wp-content/uploads/2008/07/post-it-note.jpg" width="30" height="30" align = "left"> Note that it is possible for $y_1,...,y_{40j}$ = $x_1,...,x_{40j}$ which means no evolution at all. This is why DE does not guarantee a solution.
+
+
+
+### Additional Thoughts by Earning (The Intern Guy)
+There are some QoL things that we should keep in mind while trying out DE for voice KQI
+
+**First**, Might be a good idea to keep the $argmin(x_i)$ and $argmin(f(x_i))$ for every loop so we can plot out the evolution graph. 
+
+<img src="http://becomingminimalist.com/wp-content/uploads/2008/07/post-it-note.jpg" width="30" height="30" align = "left"> Of course, $16$ dimension graph is a pretty crappy idea. So, it might be better to just plot out $f(x_i)$ or even better, plot out evolution path of Voice KQI's distribution. So, we will have good understanding visually. Also, presentation materials.
+
+**Second**, I think it is better to start off conservative. And by that, I do not mean politically. I mean for search area, we should base the value around the old interval i.e. if old $HW = 2$ then we can set search area as $[1.8,2.2]$. This is because we are under the assumption that there are merits in past hand-adjustment and we are only doing this for fine tuning.
+
+**Third**, We definitely need a blackbox program. From design perspective, it has to take in a $j*4$ matrix that looks somewhat like this
+
+| | $HT$      | $LT$                |$HW$     |$LW$  |
+| -------------: |------------- |:-------------:| -----:|-----:|
+| SKQI_1 Name |       |  |||
+| SKQI_2 Name |       |  |||
+| SKQI_3 Name |       |  |||
+| ... |       |  |||
+| SKQI_j Name |       |  |||
+
+Then for each subscriber_key, the blackbox uses the parameters $HT,LT$ to produce SKQI_1,...,SKQI_j and $HW,LW$ to produce Weight_1,...,Weight_j and calculate Voice KQI by using weighted sum of SKQI_1,...,SKQI_j. We then get Voice KQI data points one per subscriber_key.
+
+Now, the client must specify the distribution, say 10% 1-3 50% 3-4 40% 4-5. We slot the data points into 1-5 and calculate deviation from the specified distribution. We want to minimize this deviation. But that is not a black box's job.
+
+The black box should spit out one singular value that is deviation. We let this equals $f(x_i)$
